@@ -60,17 +60,22 @@ export function setupGoogleAuth(app) {
         }),
         (req, res) => {
             const user = req.user;
-            const token = signToken({ sub: user.id, email: user.email });
+            const token = signToken({
+                sub: user.id,
+                email: user.email,
+                displayName: user.display_name ?? null,
+            });
             const base = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(
                 /\/$/,
                 '',
             );
-            const url = `${base}/auth/callback?token=${encodeURIComponent(token)}`;
+            const url = `${base}/?token=${encodeURIComponent(token)}`;
             res.redirect(url);
         },
     );
 
     app.get('/auth/google/failure', (req, res) => {
-        res.status(401).json({ error: 'google authentication failed' });
+        const base = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+        res.redirect(`${base}/login?error=google`);
     });
 }

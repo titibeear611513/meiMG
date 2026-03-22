@@ -27,9 +27,7 @@ authRouter.post('/register', async (req, res) => {
             [email.trim().toLowerCase(), passwordHash, displayName ?? null],
         );
         const user = rows[0];
-        const token = signToken({ sub: user.id, email: user.email });
         return res.status(201).json({
-            token,
             user: {
                 id: user.id,
                 email: user.email,
@@ -66,7 +64,11 @@ authRouter.post('/login', async (req, res) => {
         if (!ok) {
             return res.status(401).json({ error: 'invalid email or password' });
         }
-        const token = signToken({ sub: user.id, email: user.email });
+        const token = signToken({
+            sub: user.id,
+            email: user.email,
+            displayName: user.display_name ?? null,
+        });
         return res.json({
             token,
             user: {
