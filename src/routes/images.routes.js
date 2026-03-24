@@ -20,7 +20,7 @@ imagesRouter.get('/health', (req, res) => {
 imagesRouter.get('/', async (req, res) => {
     try {
         const { rows } = await pool.query(
-            `SELECT i.id, i.file_name, i.title, i.description,
+            `SELECT i.id, i.image_url, i.title, i.description,
                     COALESCE(u.display_name, u.email) AS author
              FROM images i
              JOIN users u ON u.id = i.user_id
@@ -29,7 +29,7 @@ imagesRouter.get('/', async (req, res) => {
         );
         const images = rows.map((row) => ({
             id: String(row.id),
-            imageUrl: `/uploads/${row.file_name}`,
+            imageUrl: row.image_url,
             title: row.title?.trim() || 'Untitled',
             description: row.description || undefined,
             author: row.author,
@@ -40,6 +40,47 @@ imagesRouter.get('/', async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'failed to list images' });
+    }
+});
+
+/**
+ * GET image details by id.
+ */
+imagesRouter.get('/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'invalid image id' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT i.id, i.image_url, i.title, i.description, i.created_at,
+                    COALESCE(u.display_name, u.email) AS author
+             FROM images i
+             JOIN users u ON u.id = i.user_id
+             WHERE i.id = $1`,
+            [id],
+        );
+        const row = rows[0];
+        if (!row) {
+            return res.status(404).json({ error: 'image not found' });
+        }
+        return res.json({
+            image: {
+                id: String(row.id),
+                imageUrl: row.image_url,
+                title: row.title?.trim() || 'Untitled',
+                description: row.description || '',
+                author: row.author,
+                createdAt: row.created_at,
+                likes: 0,
+                saves: 0,
+                shares: 0,
+                category: null,
+            },
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to load image' });
     }
 });
 
@@ -61,10 +102,10 @@ imagesRouter.post(
 
         try {
             const { rows } = await pool.query(
-                `INSERT INTO images (user_id, file_name, title, description)
-                 VALUES ($1, $2, $3, $4)
+                `INSERT INTO images (user_id, file_name, image_url, title, description)
+                 VALUES ($1, $2, $3, $4, $5)
                  RETURNING id, created_at`,
-                [req.userId, req.file.filename, title, description],
+                [req.userId, req.file.filename, imageUrl, title, description],
             );
             const row = rows[0];
             return res.status(201).json({
