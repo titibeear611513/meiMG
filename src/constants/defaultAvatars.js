@@ -1,28 +1,33 @@
 export const defaultAvatarDefinitions = [
     {
         id: 'pooh',
-        filePath:
-            '/Users/liuxiuwei/.cursor/projects/Users-liuxiuwei-Desktop-MeiMG/assets/Pooh_avatar-127544d1-27ef-4b06-9242-3dc664671b79.png',
+        bg: '#f6e8b1',
+        fg: '#7c5a5a',
+        label: 'PO',
     },
     {
         id: 'eeyore',
-        filePath:
-            '/Users/liuxiuwei/.cursor/projects/Users-liuxiuwei-Desktop-MeiMG/assets/Eeyore_avatar-22b1badd-04d0-4f14-8ea6-491ea5a9168b.png',
+        bg: '#bfd0f2',
+        fg: '#6b5c7a',
+        label: 'EE',
     },
     {
         id: 'piglet',
-        filePath:
-            '/Users/liuxiuwei/.cursor/projects/Users-liuxiuwei-Desktop-MeiMG/assets/Piglet_avatar-b903e0c8-5bc9-4880-8f7c-3985696359d8.png',
+        bg: '#ffd1de',
+        fg: '#7a4b5f',
+        label: 'PI',
     },
     {
         id: 'tigger',
-        filePath:
-            '/Users/liuxiuwei/.cursor/projects/Users-liuxiuwei-Desktop-MeiMG/assets/Tigger_avatar-c0c2f84f-4183-48b4-a68a-0c3fbf8e2e83.png',
+        bg: '#ffd59e',
+        fg: '#7a5a3b',
+        label: 'TI',
     },
     {
         id: 'hunny',
-        filePath:
-            '/Users/liuxiuwei/.cursor/projects/Users-liuxiuwei-Desktop-MeiMG/assets/Hunny_avatar-d9b6b5ca-d69a-4aa3-8e93-8b46ef6a5d3b.png',
+        bg: '#fff0a8',
+        fg: '#7d583c',
+        label: 'HU',
     },
 ];
 
@@ -34,4 +39,15 @@ export function getDefaultAvatarUrlById(id) {
 export function getRandomDefaultAvatarUrl() {
     const idx = Math.floor(Math.random() * defaultAvatarDefinitions.length);
     return `/api/users/default-avatars/${defaultAvatarDefinitions[idx].id}`;
+}
+
+export function getDefaultAvatarSvgById(id) {
+    const hit = defaultAvatarDefinitions.find((item) => item.id === id);
+    if (!hit) return null;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="${hit.id}">
+<rect width="256" height="256" fill="${hit.bg}" rx="128" />
+<circle cx="128" cy="108" r="54" fill="#fff7ef" />
+<rect x="56" y="162" width="144" height="54" rx="27" fill="#fff7ef" />
+<text x="128" y="145" text-anchor="middle" font-size="38" font-family="Arial, sans-serif" font-weight="700" fill="${hit.fg}">${hit.label}</text>
+</svg>`;
 }

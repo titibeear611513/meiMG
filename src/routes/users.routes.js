@@ -2,7 +2,7 @@ import { Router } from 'express';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { imageUpload } from '../middleware/uploadImage.js';
-import { defaultAvatarDefinitions } from '../constants/defaultAvatars.js';
+import { defaultAvatarDefinitions, getDefaultAvatarSvgById } from '../constants/defaultAvatars.js';
 
 export const usersRouter = Router();
 
@@ -66,15 +66,13 @@ usersRouter.get('/default-avatars', (req, res) => {
 });
 
 usersRouter.get('/default-avatars/:id', (req, res) => {
-    const avatarPath = defaultAvatarDefinitions.find((item) => item.id === req.params.id)?.filePath;
-    if (!avatarPath) {
+    const svg = getDefaultAvatarSvgById(req.params.id);
+    if (!svg) {
         return res.status(404).json({ error: 'avatar not found' });
     }
-    return res.sendFile(avatarPath, { dotfiles: 'allow' }, (err) => {
-        if (err) {
-            res.status(err.statusCode || 404).json({ error: 'avatar not found' });
-        }
-    });
+    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(svg);
 });
 
 usersRouter.post('/me/avatar-upload', requireAuth, imageUpload.single('avatar'), async (req, res) => {
