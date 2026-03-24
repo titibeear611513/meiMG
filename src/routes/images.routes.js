@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
@@ -221,6 +223,36 @@ imagesRouter.delete('/:id/save', requireAuth, async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'failed to unsave image' });
+    }
+});
+
+/**
+ * Delete an image (owner only).
+ */
+imagesRouter.delete('/:id', requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'invalid image id' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT user_id, file_name FROM images WHERE id = $1`,
+            [id],
+        );
+        const row = rows[0];
+        if (!row) {
+            return res.status(404).json({ error: 'image not found' });
+        }
+        if (Number(row.user_id) !== req.userId) {
+            return res.status(403).json({ error: 'forbidden' });
+        }
+        await pool.query(`DELETE FROM images WHERE id = $1`, [id]);
+        const filePath = path.join(process.cwd(), 'uploads', String(row.file_name));
+        await fs.unlink(filePath).catch(() => {});
+        return res.json({ deleted: true });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to delete image' });
     }
 });
 
