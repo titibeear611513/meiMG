@@ -11,6 +11,44 @@ function parseUserId(raw) {
 }
 
 /**
+ * Update current user's editable profile fields.
+ * For now we persist display_name in DB.
+ */
+usersRouter.patch('/me/profile', requireAuth, async (req, res) => {
+    const { displayName } = req.body ?? {};
+    if (displayName !== undefined && typeof displayName !== 'string') {
+        return res.status(400).json({ error: 'displayName must be a string' });
+    }
+    const nextDisplayName =
+        typeof displayName === 'string'
+            ? displayName.trim().slice(0, 120) || null
+            : null;
+    try {
+        const { rows } = await pool.query(
+            `UPDATE users
+             SET display_name = $1
+             WHERE id = $2
+             RETURNING id, email, display_name`,
+            [nextDisplayName, req.userId],
+        );
+        const user = rows[0];
+        if (!user) {
+            return res.status(404).json({ error: 'user not found' });
+        }
+        return res.json({
+            user: {
+                id: Number(user.id),
+                email: user.email,
+                displayName: user.display_name,
+            },
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to update profile' });
+    }
+});
+
+/**
  * Public user stats for profile pages.
  */
 usersRouter.get('/:id/stats', async (req, res) => {
