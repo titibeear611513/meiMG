@@ -22,18 +22,60 @@ usersRouter.get('/:id/stats', async (req, res) => {
         const { rows } = await pool.query(
             `SELECT
                 (SELECT COUNT(*)::INTEGER FROM images i WHERE i.user_id = $1) AS uploaded_count,
+                (SELECT COUNT(*)::INTEGER FROM saved_images s WHERE s.user_id = $1) AS saved_count,
                 (SELECT COUNT(*)::INTEGER FROM follows f WHERE f.following_id = $1) AS followers_count,
                 (SELECT COUNT(*)::INTEGER FROM follows f WHERE f.follower_id = $1) AS following_count`,
             [targetUserId],
         );
         return res.json({
             uploadedCount: Number(rows[0]?.uploaded_count ?? 0),
+            savedCount: Number(rows[0]?.saved_count ?? 0),
             followersCount: Number(rows[0]?.followers_count ?? 0),
             followingCount: Number(rows[0]?.following_count ?? 0),
         });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'failed to fetch user stats' });
+    }
+});
+
+/**
+ * Saved images for current user profile.
+ */
+usersRouter.get('/:id/saved-images', requireAuth, async (req, res) => {
+    const targetUserId = parseUserId(req.params.id);
+    if (!targetUserId) {
+        return res.status(400).json({ error: 'invalid user id' });
+    }
+    if (targetUserId !== req.userId) {
+        return res.status(403).json({ error: 'forbidden' });
+    }
+    try {
+        const { rows } = await pool.query(
+            `SELECT i.id, i.user_id, i.image_url, i.title, i.description,
+                    COALESCE(u.display_name, u.email) AS author
+             FROM saved_images s
+             JOIN images i ON i.id = s.image_id
+             JOIN users u ON u.id = i.user_id
+             WHERE s.user_id = $1
+             ORDER BY s.created_at DESC
+             LIMIT 100`,
+            [targetUserId],
+        );
+        const images = rows.map((row) => ({
+            id: String(row.id),
+            userId: Number(row.user_id),
+            imageUrl: row.image_url,
+            title: row.title?.trim() || 'Untitled',
+            description: row.description || undefined,
+            author: row.author,
+            likes: 0,
+            saved: true,
+        }));
+        return res.json({ images });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to fetch saved images' });
     }
 });
 

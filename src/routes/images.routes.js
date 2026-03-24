@@ -89,6 +89,11 @@ imagesRouter.get('/:id', async (req, res) => {
                     COALESCE(u.display_name, u.email) AS author,
                     (
                         SELECT COUNT(*)::INTEGER
+                        FROM saved_images s
+                        WHERE s.image_id = i.id
+                    ) AS saves_count,
+                    (
+                        SELECT COUNT(*)::INTEGER
                         FROM follows f
                         WHERE f.following_id = u.id
                     ) AS followers_count,
@@ -97,6 +102,11 @@ imagesRouter.get('/:id', async (req, res) => {
                         FROM follows f
                         WHERE f.follower_id = u.id
                     ) AS following_count,
+                    EXISTS(
+                        SELECT 1
+                        FROM saved_images s
+                        WHERE s.user_id = $2 AND s.image_id = i.id
+                    ) AS is_saved_by_viewer,
                     EXISTS(
                         SELECT 1
                         FROM follows f
@@ -121,9 +131,10 @@ imagesRouter.get('/:id', async (req, res) => {
                 author: row.author,
                 createdAt: row.created_at,
                 likes: 0,
-                saves: 0,
+                saves: Number(row.saves_count ?? 0),
                 shares: 0,
                 category: null,
+                isSavedByViewer: Boolean(row.is_saved_by_viewer),
                 followersCount: Number(row.followers_count ?? 0),
                 followingCount: Number(row.following_count ?? 0),
                 isFollowingAuthor: Boolean(row.is_following_author),
@@ -133,6 +144,60 @@ imagesRouter.get('/:id', async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'failed to load image' });
+    }
+});
+
+/**
+ * Save an image for current user.
+ */
+imagesRouter.post('/:id/save', requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'invalid image id' });
+    }
+    try {
+        const exists = await pool.query(`SELECT 1 FROM images WHERE id = $1`, [id]);
+        if (!exists.rows[0]) {
+            return res.status(404).json({ error: 'image not found' });
+        }
+        await pool.query(
+            `INSERT INTO saved_images (user_id, image_id)
+             VALUES ($1, $2)
+             ON CONFLICT (user_id, image_id) DO NOTHING`,
+            [req.userId, id],
+        );
+        const count = await pool.query(
+            `SELECT COUNT(*)::INTEGER AS saves_count FROM saved_images WHERE image_id = $1`,
+            [id],
+        );
+        return res.json({ saved: true, savesCount: Number(count.rows[0]?.saves_count ?? 0) });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to save image' });
+    }
+});
+
+/**
+ * Unsave an image for current user.
+ */
+imagesRouter.delete('/:id/save', requireAuth, async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'invalid image id' });
+    }
+    try {
+        await pool.query(
+            `DELETE FROM saved_images WHERE user_id = $1 AND image_id = $2`,
+            [req.userId, id],
+        );
+        const count = await pool.query(
+            `SELECT COUNT(*)::INTEGER AS saves_count FROM saved_images WHERE image_id = $1`,
+            [id],
+        );
+        return res.json({ saved: false, savesCount: Number(count.rows[0]?.saves_count ?? 0) });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to unsave image' });
     }
 });
 
