@@ -1,4 +1,4 @@
-import { PutObjectCommand, DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 const region = process.env.AWS_REGION;
 const bucket = process.env.AWS_S3_BUCKET;
@@ -37,6 +37,21 @@ export async function uploadBufferToS3({ key, body, contentType, cacheControl })
         }),
     );
     return buildS3PublicUrl(key);
+}
+
+/**
+ * Fetch object from S3 (for server-side proxy / download).
+ * @param {string} key
+ * @returns {Promise<import('@aws-sdk/client-s3').GetObjectCommandOutput>}
+ */
+export async function getObjectFromS3(key) {
+    assertS3Configured();
+    return s3Client.send(
+        new GetObjectCommand({
+            Bucket: bucket,
+            Key: key,
+        }),
+    );
 }
 
 export async function deleteObjectFromS3(key) {

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { getSafeImageExtension, imageUpload } from '../middleware/uploadImage.js';
 import { verifyToken } from '../auth/jwt.js';
-import { deleteObjectFromS3, uploadBufferToS3 } from '../services/s3.js';
+import { deleteObjectFromS3, getObjectFromS3, uploadBufferToS3 } from '../services/s3.js';
 
 /**
  * Image-related routes (upload, list, etc.).
@@ -95,6 +96,54 @@ imagesRouter.get('/', async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'failed to list images' });
+    }
+});
+
+/**
+ * GET raw image bytes (proxy from S3). Avoids browser CORS to S3 on «Download».
+ */
+imagesRouter.get('/:id/file', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'invalid image id' });
+    }
+    try {
+        const { rows } = await pool.query(`SELECT file_name FROM images WHERE id = $1`, [id]);
+        const row = rows[0];
+        if (!row?.file_name) {
+            return res.status(404).json({ error: 'image not found' });
+        }
+        const key = String(row.file_name);
+        const s3Out = await getObjectFromS3(key);
+        const filename = path.basename(key) || 'image';
+        const contentType = s3Out.ContentType || 'application/octet-stream';
+        res.setHeader('Content-Type', contentType);
+        if (s3Out.ContentLength != null) {
+            res.setHeader('Content-Length', String(s3Out.ContentLength));
+        }
+        res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '')}"`);
+        const body = s3Out.Body;
+        if (!body) {
+            return res.status(502).json({ error: 'empty object from storage' });
+        }
+        body.on('error', (err) => {
+            console.error('S3 body stream error', err);
+            if (!res.headersSent) {
+                res.status(502).end();
+            } else {
+                res.destroy(err);
+            }
+        });
+        body.pipe(res);
+    } catch (err) {
+        console.error(err);
+        const httpStatus = err && typeof err === 'object' && '$metadata' in err ? err.$metadata?.httpStatusCode : null;
+        if (httpStatus === 404) {
+            return res.status(404).json({ error: 'image not found' });
+        }
+        if (!res.headersSent) {
+            return res.status(500).json({ error: 'failed to load file' });
+        }
     }
 });
 
