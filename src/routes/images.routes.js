@@ -44,18 +44,40 @@ imagesRouter.get('/', async (req, res) => {
             userId == null
                 ? `SELECT i.id, i.user_id, i.image_url, i.title, i.description,
                         COALESCE(u.display_name, u.email) AS author
+                        ,(
+                            SELECT COUNT(*)::INTEGER
+                            FROM saved_images s
+                            WHERE s.image_id = i.id
+                        ) AS saves_count
+                        ,EXISTS(
+                            SELECT 1
+                            FROM saved_images s
+                            WHERE s.user_id = $1 AND s.image_id = i.id
+                        ) AS is_saved_by_viewer
                  FROM images i
                  JOIN users u ON u.id = i.user_id
                  ORDER BY i.created_at DESC
                  LIMIT 100`
                 : `SELECT i.id, i.user_id, i.image_url, i.title, i.description,
                         COALESCE(u.display_name, u.email) AS author
+                        ,(
+                            SELECT COUNT(*)::INTEGER
+                            FROM saved_images s
+                            WHERE s.image_id = i.id
+                        ) AS saves_count
+                        ,EXISTS(
+                            SELECT 1
+                            FROM saved_images s
+                            WHERE s.user_id = $2 AND s.image_id = i.id
+                        ) AS is_saved_by_viewer
                  FROM images i
                  JOIN users u ON u.id = i.user_id
                  WHERE i.user_id = $1
                  ORDER BY i.created_at DESC
                  LIMIT 100`;
-        const { rows } = await pool.query(queryText, userId == null ? [] : [userId]);
+        const viewerId = getViewerIdFromAuthorization(req) ?? 0;
+        const params = userId == null ? [viewerId] : [userId, viewerId];
+        const { rows } = await pool.query(queryText, params);
         const images = rows.map((row) => ({
             id: String(row.id),
             userId: Number(row.user_id),
@@ -64,7 +86,8 @@ imagesRouter.get('/', async (req, res) => {
             description: row.description || undefined,
             author: row.author,
             likes: 0,
-            saved: false,
+            saves: Number(row.saves_count ?? 0),
+            saved: Boolean(row.is_saved_by_viewer),
         }));
         return res.json({ images });
     } catch (err) {

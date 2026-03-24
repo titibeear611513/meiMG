@@ -53,7 +53,12 @@ usersRouter.get('/:id/saved-images', requireAuth, async (req, res) => {
     try {
         const { rows } = await pool.query(
             `SELECT i.id, i.user_id, i.image_url, i.title, i.description,
-                    COALESCE(u.display_name, u.email) AS author
+                    COALESCE(u.display_name, u.email) AS author,
+                    (
+                        SELECT COUNT(*)::INTEGER
+                        FROM saved_images s2
+                        WHERE s2.image_id = i.id
+                    ) AS saves_count
              FROM saved_images s
              JOIN images i ON i.id = s.image_id
              JOIN users u ON u.id = i.user_id
@@ -70,6 +75,7 @@ usersRouter.get('/:id/saved-images', requireAuth, async (req, res) => {
             description: row.description || undefined,
             author: row.author,
             likes: 0,
+            saves: Number(row.saves_count ?? 0),
             saved: true,
         }));
         return res.json({ images });
