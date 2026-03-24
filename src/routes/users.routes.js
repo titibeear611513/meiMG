@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { getSafeImageExtension, imageUpload } from '../middleware/uploadImage.js';
-import { defaultAvatarDefinitions, getDefaultAvatarSvgById } from '../constants/defaultAvatars.js';
+import { defaultAvatarDefinitions, getDefaultAvatarUrlById } from '../constants/defaultAvatars.js';
 import { uploadBufferToS3 } from '../services/s3.js';
 
 export const usersRouter = Router();
@@ -62,19 +62,17 @@ usersRouter.get('/default-avatars', (req, res) => {
     return res.json({
         avatars: defaultAvatarDefinitions.map((item) => ({
             id: item.id,
-            url: `/api/users/default-avatars/${item.id}`,
+            url: getDefaultAvatarUrlById(item.id),
         })),
     });
 });
 
 usersRouter.get('/default-avatars/:id', (req, res) => {
-    const svg = getDefaultAvatarSvgById(req.params.id);
-    if (!svg) {
+    const url = getDefaultAvatarUrlById(req.params.id);
+    if (!url) {
         return res.status(404).json({ error: 'avatar not found' });
     }
-    res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.send(svg);
+    return res.redirect(302, url);
 });
 
 usersRouter.post('/me/avatar-upload', requireAuth, imageUpload.single('avatar'), async (req, res) => {
