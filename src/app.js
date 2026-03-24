@@ -5,6 +5,7 @@ import passport from 'passport';
 import { setupGoogleAuth } from './auth/passport.js';
 import { authRouter } from './routes/auth.routes.js';
 import { imagesRouter } from './routes/images.routes.js';
+import { usersRouter } from './routes/users.routes.js';
 
 export function createApp() {
     const app = express();
@@ -25,6 +26,7 @@ export function createApp() {
 
     app.use('/api/auth', authRouter);
     app.use('/api/images', imagesRouter);
+    app.use('/api/users', usersRouter);
 
     // Uploaded files on disk (same folder multer uses: ./uploads)
     app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));

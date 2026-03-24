@@ -2,12 +2,28 @@ import { Router } from 'express';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { imageUpload } from '../middleware/uploadImage.js';
+import { verifyToken } from '../auth/jwt.js';
 
 /**
  * Image-related routes (upload, list, etc.).
  * Mount in app.js: app.use('/api/images', imagesRouter)
  */
 export const imagesRouter = Router();
+
+function getViewerIdFromAuthorization(req) {
+    const header = req.headers.authorization;
+    if (!header || !header.startsWith('Bearer ')) return null;
+    const raw = header.slice('Bearer '.length).trim();
+    if (!raw) return null;
+    try {
+        const payload = verifyToken(raw);
+        const id = Number(payload.sub);
+        if (!Number.isInteger(id) || id <= 0) return null;
+        return id;
+    } catch {
+        return null;
+    }
+}
 
 // Smoke test: returns { ok: true } when the router is mounted
 imagesRouter.get('/health', (req, res) => {
@@ -18,17 +34,31 @@ imagesRouter.get('/health', (req, res) => {
  * GET list of images (newest first). Public feed for the home grid.
  */
 imagesRouter.get('/', async (req, res) => {
+    const userIdRaw = req.query.userId;
+    const userId = userIdRaw != null ? Number(userIdRaw) : null;
+    if (userIdRaw != null && (!Number.isInteger(userId) || userId <= 0)) {
+        return res.status(400).json({ error: 'invalid userId query' });
+    }
     try {
-        const { rows } = await pool.query(
-            `SELECT i.id, i.image_url, i.title, i.description,
-                    COALESCE(u.display_name, u.email) AS author
-             FROM images i
-             JOIN users u ON u.id = i.user_id
-             ORDER BY i.created_at DESC
-             LIMIT 100`,
-        );
+        const queryText =
+            userId == null
+                ? `SELECT i.id, i.user_id, i.image_url, i.title, i.description,
+                        COALESCE(u.display_name, u.email) AS author
+                 FROM images i
+                 JOIN users u ON u.id = i.user_id
+                 ORDER BY i.created_at DESC
+                 LIMIT 100`
+                : `SELECT i.id, i.user_id, i.image_url, i.title, i.description,
+                        COALESCE(u.display_name, u.email) AS author
+                 FROM images i
+                 JOIN users u ON u.id = i.user_id
+                 WHERE i.user_id = $1
+                 ORDER BY i.created_at DESC
+                 LIMIT 100`;
+        const { rows } = await pool.query(queryText, userId == null ? [] : [userId]);
         const images = rows.map((row) => ({
             id: String(row.id),
+            userId: Number(row.user_id),
             imageUrl: row.image_url,
             title: row.title?.trim() || 'Untitled',
             description: row.description || undefined,
@@ -51,14 +81,31 @@ imagesRouter.get('/:id', async (req, res) => {
     if (!Number.isInteger(id) || id <= 0) {
         return res.status(400).json({ error: 'invalid image id' });
     }
+    const viewerId = getViewerIdFromAuthorization(req);
     try {
         const { rows } = await pool.query(
             `SELECT i.id, i.image_url, i.title, i.description, i.created_at,
-                    COALESCE(u.display_name, u.email) AS author
+                    u.id AS author_id,
+                    COALESCE(u.display_name, u.email) AS author,
+                    (
+                        SELECT COUNT(*)::INTEGER
+                        FROM follows f
+                        WHERE f.following_id = u.id
+                    ) AS followers_count,
+                    (
+                        SELECT COUNT(*)::INTEGER
+                        FROM follows f
+                        WHERE f.follower_id = u.id
+                    ) AS following_count,
+                    EXISTS(
+                        SELECT 1
+                        FROM follows f
+                        WHERE f.follower_id = $2 AND f.following_id = u.id
+                    ) AS is_following_author
              FROM images i
              JOIN users u ON u.id = i.user_id
              WHERE i.id = $1`,
-            [id],
+            [id, viewerId ?? 0],
         );
         const row = rows[0];
         if (!row) {
@@ -70,12 +117,17 @@ imagesRouter.get('/:id', async (req, res) => {
                 imageUrl: row.image_url,
                 title: row.title?.trim() || 'Untitled',
                 description: row.description || '',
+                authorId: Number(row.author_id),
                 author: row.author,
                 createdAt: row.created_at,
                 likes: 0,
                 saves: 0,
                 shares: 0,
                 category: null,
+                followersCount: Number(row.followers_count ?? 0),
+                followingCount: Number(row.following_count ?? 0),
+                isFollowingAuthor: Boolean(row.is_following_author),
+                isOwnAuthor: viewerId != null && Number(row.author_id) === viewerId,
             },
         });
     } catch (err) {
