@@ -13,7 +13,7 @@ export async function findOrCreateGoogleUser(profile) {
     }
 
     const existingGoogle = await pool.query(
-        `SELECT id, email, display_name FROM users WHERE google_id = $1`,
+        `SELECT id, email, display_name, avatar_url FROM users WHERE google_id = $1`,
         [googleId],
     );
     if (existingGoogle.rows[0]) {
@@ -36,7 +36,7 @@ export async function findOrCreateGoogleUser(profile) {
             );
         }
         const { rows } = await pool.query(
-            `SELECT id, email, display_name FROM users WHERE id = $1`,
+            `SELECT id, email, display_name, avatar_url FROM users WHERE id = $1`,
             [u.id],
         );
         return rows[0];
@@ -45,7 +45,7 @@ export async function findOrCreateGoogleUser(profile) {
     const { rows } = await pool.query(
         `INSERT INTO users (email, password_hash, google_id, display_name, avatar_url)
          VALUES ($1, NULL, $2, $3, $4)
-         RETURNING id, email, display_name`,
+         RETURNING id, email, display_name, avatar_url`,
         [email, googleId, displayName, avatarUrl],
     );
     return rows[0];

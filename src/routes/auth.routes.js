@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { signToken } from '../auth/jwt.js';
+import { getRandomDefaultAvatarUrl } from '../constants/defaultAvatars.js';
 
 export const authRouter = Router();
 
@@ -18,13 +19,14 @@ authRouter.post('/register', async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const avatarUrl = getRandomDefaultAvatarUrl();
 
     try {
         const { rows } = await pool.query(
-            `INSERT INTO users (email, password_hash, display_name)
-             VALUES ($1, $2, $3)
-             RETURNING id, email, display_name`,
-            [email.trim().toLowerCase(), passwordHash, displayName ?? null],
+            `INSERT INTO users (email, password_hash, display_name, avatar_url)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id, email, display_name, avatar_url`,
+            [email.trim().toLowerCase(), passwordHash, displayName ?? null, avatarUrl],
         );
         const user = rows[0];
         return res.status(201).json({
@@ -32,6 +34,7 @@ authRouter.post('/register', async (req, res) => {
                 id: user.id,
                 email: user.email,
                 displayName: user.display_name,
+                avatarUrl: user.avatar_url,
             },
         });
     } catch (err) {
@@ -54,7 +57,7 @@ authRouter.post('/login', async (req, res) => {
 
     try {
         const { rows } = await pool.query(
-            `SELECT id, email, display_name, password_hash FROM users WHERE email = $1`,
+            `SELECT id, email, display_name, avatar_url, password_hash FROM users WHERE email = $1`,
             [email.trim().toLowerCase()],
         );
         const user = rows[0];
@@ -68,6 +71,7 @@ authRouter.post('/login', async (req, res) => {
             sub: user.id,
             email: user.email,
             displayName: user.display_name ?? null,
+            avatarUrl: user.avatar_url ?? null,
         });
         return res.json({
             token,
@@ -75,6 +79,7 @@ authRouter.post('/login', async (req, res) => {
                 id: user.id,
                 email: user.email,
                 displayName: user.display_name,
+                avatarUrl: user.avatar_url,
             },
         });
     } catch (err) {

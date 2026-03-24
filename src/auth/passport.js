@@ -39,7 +39,7 @@ export function setupGoogleAuth(app) {
     passport.deserializeUser(async (id, done) => {
         try {
             const { rows } = await pool.query(
-                `SELECT id, email, display_name FROM users WHERE id = $1`,
+                `SELECT id, email, display_name, avatar_url FROM users WHERE id = $1`,
                 [id],
             );
             done(null, rows[0] ?? null);
@@ -64,6 +64,7 @@ export function setupGoogleAuth(app) {
                 sub: user.id,
                 email: user.email,
                 displayName: user.display_name ?? null,
+                avatarUrl: user.avatar_url ?? null,
             });
             const base = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(
                 /\/$/,

@@ -112,6 +112,7 @@ imagesRouter.get('/:id', async (req, res) => {
             `SELECT i.id, i.image_url, i.title, i.description, i.created_at,
                     u.id AS author_id,
                     COALESCE(u.display_name, u.email) AS author,
+                    u.avatar_url AS author_avatar_url,
                     (
                         SELECT COUNT(*)::INTEGER
                         FROM saved_images s
@@ -154,6 +155,7 @@ imagesRouter.get('/:id', async (req, res) => {
                 description: row.description || '',
                 authorId: Number(row.author_id),
                 author: row.author,
+                authorAvatarUrl: row.author_avatar_url || null,
                 createdAt: row.created_at,
                 likes: 0,
                 saves: Number(row.saves_count ?? 0),

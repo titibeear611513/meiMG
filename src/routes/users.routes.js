@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
+import { imageUpload } from '../middleware/uploadImage.js';
+import { defaultAvatarDefinitions } from '../constants/defaultAvatars.js';
 
 export const usersRouter = Router();
 
@@ -15,21 +17,26 @@ function parseUserId(raw) {
  * For now we persist display_name in DB.
  */
 usersRouter.patch('/me/profile', requireAuth, async (req, res) => {
-    const { displayName } = req.body ?? {};
+    const { displayName, avatarUrl } = req.body ?? {};
     if (displayName !== undefined && typeof displayName !== 'string') {
         return res.status(400).json({ error: 'displayName must be a string' });
+    }
+    if (avatarUrl !== undefined && typeof avatarUrl !== 'string') {
+        return res.status(400).json({ error: 'avatarUrl must be a string' });
     }
     const nextDisplayName =
         typeof displayName === 'string'
             ? displayName.trim().slice(0, 120) || null
             : null;
+    const nextAvatarUrl = typeof avatarUrl === 'string' ? avatarUrl.trim().slice(0, 600) || null : null;
     try {
         const { rows } = await pool.query(
             `UPDATE users
-             SET display_name = $1
-             WHERE id = $2
-             RETURNING id, email, display_name`,
-            [nextDisplayName, req.userId],
+             SET display_name = COALESCE($1, display_name),
+                 avatar_url = COALESCE($2, avatar_url)
+             WHERE id = $3
+             RETURNING id, email, display_name, avatar_url`,
+            [nextDisplayName, nextAvatarUrl, req.userId],
         );
         const user = rows[0];
         if (!user) {
@@ -40,11 +47,64 @@ usersRouter.patch('/me/profile', requireAuth, async (req, res) => {
                 id: Number(user.id),
                 email: user.email,
                 displayName: user.display_name,
+                avatarUrl: user.avatar_url,
             },
         });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'failed to update profile' });
+    }
+});
+
+usersRouter.get('/default-avatars', (req, res) => {
+    return res.json({
+        avatars: defaultAvatarDefinitions.map((item) => ({
+            id: item.id,
+            url: `/api/users/default-avatars/${item.id}`,
+        })),
+    });
+});
+
+usersRouter.get('/default-avatars/:id', (req, res) => {
+    const avatarPath = defaultAvatarDefinitions.find((item) => item.id === req.params.id)?.filePath;
+    if (!avatarPath) {
+        return res.status(404).json({ error: 'avatar not found' });
+    }
+    return res.sendFile(avatarPath, { dotfiles: 'allow' }, (err) => {
+        if (err) {
+            res.status(err.statusCode || 404).json({ error: 'avatar not found' });
+        }
+    });
+});
+
+usersRouter.post('/me/avatar-upload', requireAuth, imageUpload.single('avatar'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'missing avatar file (field name must be "avatar")' });
+    }
+    const avatarUrl = `/uploads/${req.file.filename}`;
+    try {
+        const { rows } = await pool.query(
+            `UPDATE users
+             SET avatar_url = $1
+             WHERE id = $2
+             RETURNING id, email, display_name, avatar_url`,
+            [avatarUrl, req.userId],
+        );
+        const user = rows[0];
+        if (!user) {
+            return res.status(404).json({ error: 'user not found' });
+        }
+        return res.json({
+            user: {
+                id: Number(user.id),
+                email: user.email,
+                displayName: user.display_name,
+                avatarUrl: user.avatar_url,
+            },
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to update avatar' });
     }
 });
 
