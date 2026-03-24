@@ -1,10 +1,10 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { imageUpload } from '../middleware/uploadImage.js';
+import { getSafeImageExtension, imageUpload } from '../middleware/uploadImage.js';
 import { verifyToken } from '../auth/jwt.js';
+import { deleteObjectFromS3, uploadBufferToS3 } from '../services/s3.js';
 
 /**
  * Image-related routes (upload, list, etc.).
@@ -249,8 +249,7 @@ imagesRouter.delete('/:id', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'forbidden' });
         }
         await pool.query(`DELETE FROM images WHERE id = $1`, [id]);
-        const filePath = path.join(process.cwd(), 'uploads', String(row.file_name));
-        await fs.unlink(filePath).catch(() => {});
+        await deleteObjectFromS3(String(row.file_name)).catch(() => {});
         return res.json({ deleted: true });
     } catch (err) {
         console.error(err);
@@ -272,20 +271,25 @@ imagesRouter.post(
         }
         const title = req.body.title ? String(req.body.title).slice(0, 500) : null;
         const description = req.body.description ? String(req.body.description).slice(0, 5000) : null;
-        const imageUrl = `/uploads/${req.file.filename}`;
+        const objectKey = `images/${randomUUID()}${getSafeImageExtension(req.file)}`;
 
         try {
+            const imageUrl = await uploadBufferToS3({
+                key: objectKey,
+                body: req.file.buffer,
+                contentType: req.file.mimetype,
+            });
             const { rows } = await pool.query(
                 `INSERT INTO images (user_id, file_name, image_url, title, description)
                  VALUES ($1, $2, $3, $4, $5)
                  RETURNING id, created_at`,
-                [req.userId, req.file.filename, imageUrl, title, description],
+                [req.userId, objectKey, imageUrl, title, description],
             );
             const row = rows[0];
             return res.status(201).json({
                 id: row.id,
                 imageUrl,
-                filename: req.file.filename,
+                filename: objectKey,
                 title,
                 description,
                 userId: req.userId,

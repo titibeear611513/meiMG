@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import pool from '../db/pool.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { imageUpload } from '../middleware/uploadImage.js';
+import { getSafeImageExtension, imageUpload } from '../middleware/uploadImage.js';
 import { defaultAvatarDefinitions, getDefaultAvatarSvgById } from '../constants/defaultAvatars.js';
+import { uploadBufferToS3 } from '../services/s3.js';
 
 export const usersRouter = Router();
 
@@ -79,8 +81,13 @@ usersRouter.post('/me/avatar-upload', requireAuth, imageUpload.single('avatar'),
     if (!req.file) {
         return res.status(400).json({ error: 'missing avatar file (field name must be "avatar")' });
     }
-    const avatarUrl = `/uploads/${req.file.filename}`;
+    const objectKey = `avatars/${randomUUID()}${getSafeImageExtension(req.file)}`;
     try {
+        const avatarUrl = await uploadBufferToS3({
+            key: objectKey,
+            body: req.file.buffer,
+            contentType: req.file.mimetype,
+        });
         const { rows } = await pool.query(
             `UPDATE users
              SET avatar_url = $1
