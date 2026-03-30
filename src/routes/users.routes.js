@@ -75,6 +75,68 @@ usersRouter.get('/default-avatars/:id', (req, res) => {
     return res.redirect(302, url);
 });
 
+/**
+ * Followers list of current user.
+ */
+usersRouter.get('/me/followers', requireAuth, async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT
+                u.id,
+                u.email,
+                u.display_name,
+                u.avatar_url
+             FROM follows f
+             JOIN users u ON u.id = f.follower_id
+             WHERE f.following_id = $1
+             ORDER BY f.created_at DESC`,
+            [req.userId],
+        );
+        return res.json({
+            users: rows.map((row) => ({
+                id: Number(row.id),
+                email: row.email,
+                displayName: row.display_name,
+                avatarUrl: row.avatar_url,
+            })),
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to fetch followers' });
+    }
+});
+
+/**
+ * Following list of current user.
+ */
+usersRouter.get('/me/following', requireAuth, async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            `SELECT
+                u.id,
+                u.email,
+                u.display_name,
+                u.avatar_url
+             FROM follows f
+             JOIN users u ON u.id = f.following_id
+             WHERE f.follower_id = $1
+             ORDER BY f.created_at DESC`,
+            [req.userId],
+        );
+        return res.json({
+            users: rows.map((row) => ({
+                id: Number(row.id),
+                email: row.email,
+                displayName: row.display_name,
+                avatarUrl: row.avatar_url,
+            })),
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to fetch following' });
+    }
+});
+
 usersRouter.post('/me/avatar-upload', requireAuth, imageUpload.single('avatar'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'missing avatar file (field name must be "avatar")' });
