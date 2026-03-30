@@ -137,6 +137,30 @@ usersRouter.get('/me/following', requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * Remove one follower from current user.
+ * This deletes relation: targetUserId -> currentUserId.
+ */
+usersRouter.delete('/me/followers/:id', requireAuth, async (req, res) => {
+    const targetUserId = parseUserId(req.params.id);
+    if (!targetUserId) {
+        return res.status(400).json({ error: 'invalid user id' });
+    }
+    if (targetUserId === req.userId) {
+        return res.status(400).json({ error: 'cannot remove yourself' });
+    }
+    try {
+        await pool.query(
+            `DELETE FROM follows WHERE follower_id = $1 AND following_id = $2`,
+            [targetUserId, req.userId],
+        );
+        return res.json({ removed: true });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'failed to remove follower' });
+    }
+});
+
 usersRouter.post('/me/avatar-upload', requireAuth, imageUpload.single('avatar'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'missing avatar file (field name must be "avatar")' });
